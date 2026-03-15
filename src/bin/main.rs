@@ -8,6 +8,7 @@
 #![deny(clippy::large_stack_frames)]
 
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::timer::timg::TimerGroup;
 
 use bt_hci::controller::ExternalController;
@@ -21,6 +22,7 @@ use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
 use esp_backtrace as _;
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 
 extern crate alloc;
 
@@ -30,6 +32,25 @@ const L2CAP_CHANNELS_MAX: usize = 1;
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+//#[embassy_executor::task]
+//async fn ldr_task(
+//    mut adc: Adc<'static, esp_hal::peripherals::ADC1>,
+//    mut adc_pin: esp_hal::analog::adc::AdcPin<esp_hal::peripherals::GPIO0, esp_hal::peripherals::ADC1>,
+//) {
+//    loop {
+//        let value: u16 = adc.read(&mut adc_pin).unwrap();
+//        info!("LDR value: {}", value);
+//
+//        if value < 1000 {
+//            info!("Dark");
+//        } else {
+//            info!("Bright");
+//        }
+//
+//        Timer::after(Duration::from_millis(500)).await;
+//    }
+//}
 
 #[allow(
     clippy::large_stack_frames,
@@ -64,11 +85,27 @@ async fn main(spawner: Spawner) -> ! {
         HostResources::new();
     let _stack = trouble_host::new(ble_controller, &mut resources);
 
+    let mut adc_config = AdcConfig::new();
+    let mut ldr_pin = adc_config.enable_pin(peripherals.GPIO2, Attenuation::_11dB);
+    let mut adc = Adc::new(peripherals.ADC2, adc_config);
+
     // TODO: Spawn some tasks
+    //spawner.spawn(ldr_task(adc, adc_pin)).unwrap();
+
+    let mut led = Output::new(peripherals.GPIO1, Level::High, OutputConfig::default());
+
     let _ = spawner;
 
     loop {
-        info!("Hello world!");
+        let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
+        info!("LDR reads: {}", pin_value);
+
+        if pin_value > 3500 {
+            led.set_high();
+        } else {
+            led.set_low();
+        }
+
         Timer::after(Duration::from_secs(1)).await;
     }
 

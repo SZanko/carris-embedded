@@ -214,6 +214,7 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "nb 1.1.0",
  "smoltcp",
  "static_cell",
  "trouble-host",
