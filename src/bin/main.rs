@@ -17,7 +17,6 @@ use bt_hci::controller::ExternalController;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
 
-
 use defmt::info;
 use esp_println as _;
 
@@ -25,7 +24,7 @@ use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_6X10},
+    mono_font::{ascii::FONT_6X10, MonoTextStyle, MonoTextStyleBuilder},
     pixelcolor::BinaryColor,
     prelude::*,
     text::{Baseline, Text},
@@ -33,7 +32,7 @@ use embedded_graphics::{
 use esp_backtrace as _;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::Async;
-use ssd1306::{I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode, prelude::*};
+use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 extern crate alloc;
 
@@ -63,18 +62,21 @@ esp_bootloader_esp_idf::esp_app_desc!();
 //    }
 //}
 
-
 fn write_to_integrated_display_esp32c3(
-    display: &mut Ssd1306<I2CInterface<I2c<Async>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>>,
+    display: &mut Ssd1306<
+        I2CInterface<I2c<Async>>,
+        DisplaySize128x64,
+        BufferedGraphicsMode<DisplaySize128x64>,
+    >,
     text_style: MonoTextStyle<'_, BinaryColor>,
+    line1: &str,
+    line2: &str,
+    line3: &str,
 ) {
     let width: i32 = 72;
     let _height: i32 = 40;
     let x_offset: i32 = 28;
     let y_offset: i32 = 16;
-
-    let line1 = "I use Nix";
-    let line2 = "btw";
 
     // FONT_6X10 is 6 px wide, 10 px high per char
     let w1 = (line1.len() as i32) * 6;
@@ -86,6 +88,9 @@ fn write_to_integrated_display_esp32c3(
     let x2 = x_offset + (width - w2) / 2;
     let y2 = y_offset + 32;
 
+    let x3 = x_offset + (width - w2) / 2;
+    let y3 = y_offset + 46;
+
     Text::with_baseline(line1, Point::new(x1, y1), text_style, Baseline::Bottom)
         .draw(display)
         .unwrap();
@@ -94,8 +99,14 @@ fn write_to_integrated_display_esp32c3(
         .draw(display)
         .unwrap();
 
-    info!("Write to integrated display Line 1: {} Line 2: {}", line1, line2);
+    Text::with_baseline(line3, Point::new(x3, y3), text_style, Baseline::Bottom)
+        .draw(display)
+        .unwrap();
 
+    info!(
+        "Write to integrated display \n Line 1: {} Line 2: {} Line 3: {}",
+        line1, line2, line3
+    );
 
     display.flush().unwrap();
 }
@@ -140,7 +151,7 @@ async fn main(spawner: Spawner) -> ! {
     // TODO: Spawn some tasks
     //spawner.spawn(ldr_task(adc, adc_pin)).unwrap();
 
-    let mut led = Output::new(peripherals.GPIO1, Level::High, OutputConfig::default());
+    let mut led = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
     let _ = spawner;
 
@@ -161,7 +172,6 @@ async fn main(spawner: Spawner) -> ! {
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
-
     loop {
         display.clear(BinaryColor::Off).unwrap();
         led.toggle();
@@ -175,7 +185,13 @@ async fn main(spawner: Spawner) -> ! {
         // .draw(&mut display)
         // .unwrap();
 
-        write_to_integrated_display_esp32c3(&mut display, text_style);
+        write_to_integrated_display_esp32c3(
+            &mut display,
+            text_style,
+            "Connected to",
+            "Accesspoint",
+            "OpenNova",
+        );
 
         //let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
         //info!("LDR reads: {}", pin_value);
