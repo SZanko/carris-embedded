@@ -1,12 +1,14 @@
-#![no_std]
 #![no_main]
 
 use bt_hci::controller::ExternalController;
+use embassy_net::{DhcpConfig, Runner, Stack, StackResources};
 use esp_hal::Async;
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
-use esp_hal::peripherals::{GPIO5, GPIO6, I2C0, Peripherals};
+use esp_hal::peripherals::{GPIO5, GPIO6, I2C0, Peripherals, WIFI};
+use esp_hal::rng::Rng;
 use esp_hal::time::Rate;
 use esp_radio::ble::controller::BleConnector;
+use esp_radio::wifi::{WifiController, WifiDevice};
 use ssd1306::mode::{BufferedGraphicsMode, DisplayConfig};
 use ssd1306::prelude::{Brightness, DisplayRotation, DisplaySize128x64, I2CInterface};
 use ssd1306::{I2CDisplayInterface, Ssd1306};
@@ -27,13 +29,50 @@ pub async fn setup_bluetooth(
     let _stack = trouble_host::new(ble_controller, &mut resources);
 }
 
+macro_rules! mk_static {
+    ($t:ty,$val:expr) => {{
+        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
+        #[deny(unused_attributes)]
+        let x = STATIC_CELL.uninit().write(($val));
+        x
+    }};
+}
+
+pub struct WifiSetup {
+    pub controller: WifiController<'static>,
+    pub stack: Stack<'static>,
+    pub runner: Runner<'static, WifiDevice<'static>>,
+    pub tls_seed: u64,
+}
+
 pub async fn setup_wifi(
-    wifi: esp_hal::peripherals::WIFI<'_>,
-    radio_init: &esp_radio::Controller<'_>,
-) {
-    let (mut _wifi_controller, _interfaces) =
+    wifi: WIFI<'static>,
+    radio_init: &'static esp_radio::Controller<'_>,
+) -> WifiSetup {
+    let (mut wifi_controller, interfaces) =
         esp_radio::wifi::new(&radio_init, wifi, Default::default())
             .expect("Failed to initialize Wi-Fi controller");
+
+    let rng = Rng::new();
+    let net_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
+    let tls_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
+
+    let dhcp_config = DhcpConfig::default();
+    let config = embassy_net::Config::dhcpv4(dhcp_config);
+
+    let (stack, runner) = embassy_net::new(
+        interfaces.sta,
+        config,
+        mk_static!(StackResources<3>, StackResources::<3>::new()),
+        net_seed,
+    );
+
+    return WifiSetup {
+        controller: wifi_controller,
+        stack,
+        runner,
+        tls_seed,
+    };
 }
 
 pub async fn setup_integrated_display_esp32c3<'d>(

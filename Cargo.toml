@@ -24,7 +24,7 @@ esp-rtos = { version = "0.2.0", features = [
 defmt                  = "1.0.1"
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32c3"] }
 
-embassy-net = { version = "0.7.1", features = ["defmt", "dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
+embassy-net = { version = "0.8.0", features = ["defmt", "dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
 embedded-io = { version = "0.7.1", features = ["defmt"] }
 embedded-io-async = { version = "0.7.0", features = ["defmt"] }
 esp-alloc = { version = "0.9.0", features = ["defmt"] }
@@ -69,9 +69,16 @@ static_cell      = "2.1.1"
 u8g2-fonts = "0.7.2"
 embedded-graphics = { version ="0.8.2", features = ["defmt", ] }
 ssd1306 = { version = "0.10.0", features = ["async"] }
-reqwless = { version = "0.13.0", default-features = false, features = [
+reqwless = { version = "0.14.0", default-features = false, features = [
   "embedded-tls",
+  "defmt",
+  #"esp-mbedtls"
 ] }
+# TODO figure out how to use mbedtls for ssl veryfing
+#mbedtls-rs = { git = "https://github.com/esp-rs/mbedtls-rs.git", features = [
+#  "accel-esp32c3",
+#  "defmt"
+#] }
 
 
 [profile.dev]
