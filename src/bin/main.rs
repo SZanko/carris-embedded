@@ -10,6 +10,8 @@
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::i2c::master::{Config as I2cConfig, I2c};
+use esp_hal::time::Rate;
 
 use bt_hci::controller::ExternalController;
 use esp_radio::ble::controller::BleConnector;
@@ -23,6 +25,13 @@ use embassy_time::{Duration, Timer};
 
 use esp_backtrace as _;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use embedded_graphics::{
+    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder, MonoTextStyle},
+    pixelcolor::BinaryColor,
+    prelude::*,
+    text::{Baseline, Text},
+};
+use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 extern crate alloc;
 
@@ -96,15 +105,77 @@ async fn main(spawner: Spawner) -> ! {
 
     let _ = spawner;
 
-    loop {
-        let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
-        info!("LDR reads: {}", pin_value);
+    let i2c_config = I2cConfig::default()
+        .with_frequency(Rate::from_khz(400));
 
-        if pin_value > 3500 {
-            led.set_high();
-        } else {
-            led.set_low();
-        }
+    let i2c = I2c::new(peripherals.I2C0, i2c_config)
+        .unwrap()
+        .with_sda(peripherals.GPIO5)
+        .with_scl(peripherals.GPIO6)
+        .into_async();
+
+
+    let interface = I2CDisplayInterface::new(i2c);
+    let mut display = Ssd1306::new(
+        interface,
+        DisplaySize128x64,
+        DisplayRotation::Rotate0,
+    ).into_buffered_graphics_mode();
+    display.init().unwrap();
+
+    display.set_brightness(Brightness:BRIGHTEST).unwrap();
+
+
+    let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+
+    let width: i32 = 72;
+    let height: i32 = 40;
+    let x_offset: i32 = 28;
+    let y_offset: i32 = 16;
+
+    loop {
+        display.clear(BinaryColor::Off).unwrap();
+
+        // Optional frame, same as drawFrame(...)
+        // Rectangle::new(
+        //     Point::new(x_offset, y_offset),
+        //     Size::new(width as u32, height as u32),
+        // )
+        // .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        // .draw(&mut display)
+        // .unwrap();
+
+        let line1 = "I use Rust";
+        let line2 = "btw";
+
+        // FONT_6X10 is 6 px wide, 10 px high per char
+        let w1 = (line1.len() as i32) * 6;
+        let w2 = (line2.len() as i32) * 6;
+
+        let x1 = x_offset + (width - w1) / 2;
+        let y1 = y_offset + 18;
+
+        let x2 = x_offset + (width - w2) / 2;
+        let y2 = y_offset + 32;
+
+        Text::with_baseline(line1, Point::new(x1, y1), text_style, Baseline::Bottom)
+            .draw(&mut display)
+            .unwrap();
+
+        Text::with_baseline(line2, Point::new(x2, y2), text_style, Baseline::Bottom)
+            .draw(&mut display)
+            .unwrap();
+
+        display.flush().unwrap();
+
+        //let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
+        //info!("LDR reads: {}", pin_value);
+
+        //if pin_value > 3500 {
+        //    led.set_high();
+        //} else {
+        //    led.set_low();
+        //}
 
         Timer::after(Duration::from_secs(1)).await;
     }
