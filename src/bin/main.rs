@@ -7,6 +7,7 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+use alloc::boxed::Box;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Level, Output, OutputConfig};
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
@@ -21,23 +22,34 @@ use defmt::info;
 use esp_println as _;
 
 use embassy_executor::Spawner;
+use embassy_net::{
+    DhcpConfig, Runner, Stack, StackResources,
+    dns::DnsSocket,
+    tcp::client::{TcpClient, TcpClientState},
+};
 use embassy_time::{Duration, Timer};
 
+use carris_embedded::hardware_setup::{
+    setup_bluetooth, setup_integrated_display_esp32c3, setup_wifi,
+};
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle, MonoTextStyleBuilder},
+    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_6X10},
     pixelcolor::BinaryColor,
     prelude::*,
     text::{Baseline, Text},
 };
 use esp_backtrace as _;
-use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::Async;
-use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use esp_hal::peripherals::Peripherals;
+use esp_radio::wifi::WifiDevice;
+use reqwless::client::{HttpClient, TlsConfig};
+use ssd1306::{I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode, prelude::*};
 
 extern crate alloc;
 
-const CONNECTIONS_MAX: usize = 1;
-const L2CAP_CHANNELS_MAX: usize = 1;
+//const SSID: &str = option_env!("SSID").unwrap_or("OpenFCT");
+//const PASSWORD: &str = option_env!("PASSWORD").unwrap_or("");
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -111,6 +123,43 @@ fn write_to_integrated_display_esp32c3(
     display.flush().unwrap();
 }
 
+#[embassy_executor::task]
+async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+    runner.run().await
+}
+
+async fn access_website(stack: Stack<'_>, tls_seed: u64) {
+    let mut rx_buffer = [0; 4096];
+    let mut tx_buffer = [0; 4096];
+    let dns = DnsSocket::new(stack);
+    let tcp_state = TcpClientState::<1, 4096, 4096>::new();
+    let tcp = TcpClient::new(stack, &tcp_state);
+
+    let tls = TlsConfig::new(
+        tls_seed,
+        &mut rx_buffer,
+        &mut tx_buffer,
+        reqwless::client::TlsVerify::None,
+    );
+
+    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls);
+    let mut buffer = [0u8; 4096];
+    let mut http_req = client
+        .request(
+            reqwless::request::Method::GET,
+            "https://jsonplaceholder.typicode.com/posts/1",
+        )
+        .await
+        .unwrap();
+    let response = http_req.send(&mut buffer).await.unwrap();
+
+    info!("Got response");
+    let res = response.body().read_to_end().await.unwrap();
+
+    let content = core::str::from_utf8(res).unwrap();
+    info!("{}", content);
+}
+
 #[allow(
     clippy::large_stack_frames,
     reason = "it's not unusual to allocate larger buffers etc. in main"
@@ -134,15 +183,9 @@ async fn main(spawner: Spawner) -> ! {
     info!("Embassy initialized!");
 
     let radio_init = esp_radio::init().expect("Failed to initialize Wi-Fi/BLE controller");
-    let (mut _wifi_controller, _interfaces) =
-        esp_radio::wifi::new(&radio_init, peripherals.WIFI, Default::default())
-            .expect("Failed to initialize Wi-Fi controller");
+    setup_wifi(peripherals.WIFI, &radio_init).await;
     // find more examples https://github.com/embassy-rs/trouble/tree/main/examples/esp32
-    let transport = BleConnector::new(&radio_init, peripherals.BT, Default::default()).unwrap();
-    let ble_controller = ExternalController::<_, 1>::new(transport);
-    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
-        HostResources::new();
-    let _stack = trouble_host::new(ble_controller, &mut resources);
+    setup_bluetooth(peripherals.BT, &radio_init).await;
 
     let mut adc_config = AdcConfig::new();
     let mut ldr_pin = adc_config.enable_pin(peripherals.GPIO2, Attenuation::_11dB);
@@ -155,25 +198,13 @@ async fn main(spawner: Spawner) -> ! {
 
     let _ = spawner;
 
-    let i2c_config = I2cConfig::default().with_frequency(Rate::from_khz(400));
-
-    let i2c = I2c::new(peripherals.I2C0, i2c_config)
-        .unwrap()
-        .with_sda(peripherals.GPIO5)
-        .with_scl(peripherals.GPIO6)
-        .into_async();
-
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
-        .into_buffered_graphics_mode();
-    display.init().unwrap();
-
-    display.set_brightness(Brightness::BRIGHTEST).unwrap();
+    let mut integrated_display =
+        setup_integrated_display_esp32c3(peripherals.I2C0, peripherals.GPIO5, peripherals.GPIO6).await;
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
     loop {
-        display.clear(BinaryColor::Off).unwrap();
+        integrated_display.clear(BinaryColor::Off).unwrap();
         led.toggle();
 
         // Optional frame, same as drawFrame(...)
@@ -186,11 +217,11 @@ async fn main(spawner: Spawner) -> ! {
         // .unwrap();
 
         write_to_integrated_display_esp32c3(
-            &mut display,
+            &mut integrated_display,
             text_style,
             "Connected to",
             "Accesspoint",
-            "OpenNova",
+            "Deine Mama",
         );
 
         //let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
