@@ -17,6 +17,7 @@ use bt_hci::controller::ExternalController;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
 
+
 use defmt::info;
 use esp_println as _;
 
@@ -31,6 +32,7 @@ use embedded_graphics::{
 };
 use esp_backtrace as _;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use esp_hal::Async;
 use ssd1306::{I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode, prelude::*};
 
 extern crate alloc;
@@ -60,6 +62,43 @@ esp_bootloader_esp_idf::esp_app_desc!();
 //        Timer::after(Duration::from_millis(500)).await;
 //    }
 //}
+
+
+fn write_to_integrated_display_esp32c3(
+    display: &mut Ssd1306<I2CInterface<I2c<Async>>, DisplaySize128x64, BufferedGraphicsMode<DisplaySize128x64>>,
+    text_style: MonoTextStyle<'_, BinaryColor>,
+) {
+    let width: i32 = 72;
+    let _height: i32 = 40;
+    let x_offset: i32 = 28;
+    let y_offset: i32 = 16;
+
+    let line1 = "I use Nix";
+    let line2 = "btw";
+
+    // FONT_6X10 is 6 px wide, 10 px high per char
+    let w1 = (line1.len() as i32) * 6;
+    let w2 = (line2.len() as i32) * 6;
+
+    let x1 = x_offset + (width - w1) / 2;
+    let y1 = y_offset + 18;
+
+    let x2 = x_offset + (width - w2) / 2;
+    let y2 = y_offset + 32;
+
+    Text::with_baseline(line1, Point::new(x1, y1), text_style, Baseline::Bottom)
+        .draw(display)
+        .unwrap();
+
+    Text::with_baseline(line2, Point::new(x2, y2), text_style, Baseline::Bottom)
+        .draw(display)
+        .unwrap();
+
+    info!("Write to integrated display Line 1: {} Line 2: {}", line1, line2);
+
+
+    display.flush().unwrap();
+}
 
 #[allow(
     clippy::large_stack_frames,
@@ -122,13 +161,10 @@ async fn main(spawner: Spawner) -> ! {
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
-    let width: i32 = 72;
-    let height: i32 = 40;
-    let x_offset: i32 = 28;
-    let y_offset: i32 = 16;
 
     loop {
         display.clear(BinaryColor::Off).unwrap();
+        led.toggle();
 
         // Optional frame, same as drawFrame(...)
         // Rectangle::new(
@@ -139,28 +175,7 @@ async fn main(spawner: Spawner) -> ! {
         // .draw(&mut display)
         // .unwrap();
 
-        let line1 = "I use Rust";
-        let line2 = "btw";
-
-        // FONT_6X10 is 6 px wide, 10 px high per char
-        let w1 = (line1.len() as i32) * 6;
-        let w2 = (line2.len() as i32) * 6;
-
-        let x1 = x_offset + (width - w1) / 2;
-        let y1 = y_offset + 18;
-
-        let x2 = x_offset + (width - w2) / 2;
-        let y2 = y_offset + 32;
-
-        Text::with_baseline(line1, Point::new(x1, y1), text_style, Baseline::Bottom)
-            .draw(&mut display)
-            .unwrap();
-
-        Text::with_baseline(line2, Point::new(x2, y2), text_style, Baseline::Bottom)
-            .draw(&mut display)
-            .unwrap();
-
-        display.flush().unwrap();
+        write_to_integrated_display_esp32c3(&mut display, text_style);
 
         //let pin_value: u16 = nb::block!(adc.read_oneshot(&mut ldr_pin)).unwrap();
         //info!("LDR reads: {}", pin_value);
