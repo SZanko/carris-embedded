@@ -9,9 +9,9 @@
 
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Level, Output, OutputConfig};
-use esp_hal::timer::timg::TimerGroup;
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::time::Rate;
+use esp_hal::timer::timg::TimerGroup;
 
 use bt_hci::controller::ExternalController;
 use esp_radio::ble::controller::BleConnector;
@@ -23,15 +23,15 @@ use esp_println as _;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
-use esp_backtrace as _;
-use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder, MonoTextStyle},
+    mono_font::{MonoTextStyle, MonoTextStyleBuilder, ascii::FONT_6X10},
     pixelcolor::BinaryColor,
     prelude::*,
     text::{Baseline, Text},
 };
-use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+use esp_backtrace as _;
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use ssd1306::{I2CDisplayInterface, Ssd1306, mode::BufferedGraphicsMode, prelude::*};
 
 extern crate alloc;
 
@@ -105,8 +105,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let _ = spawner;
 
-    let i2c_config = I2cConfig::default()
-        .with_frequency(Rate::from_khz(400));
+    let i2c_config = I2cConfig::default().with_frequency(Rate::from_khz(400));
 
     let i2c = I2c::new(peripherals.I2C0, i2c_config)
         .unwrap()
@@ -114,17 +113,12 @@ async fn main(spawner: Spawner) -> ! {
         .with_scl(peripherals.GPIO6)
         .into_async();
 
-
     let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(
-        interface,
-        DisplaySize128x64,
-        DisplayRotation::Rotate0,
-    ).into_buffered_graphics_mode();
+    let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0)
+        .into_buffered_graphics_mode();
     display.init().unwrap();
 
-    display.set_brightness(Brightness:BRIGHTEST).unwrap();
-
+    display.set_brightness(Brightness::BRIGHTEST).unwrap();
 
     let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
