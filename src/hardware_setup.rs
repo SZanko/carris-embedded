@@ -1,5 +1,3 @@
-#![no_main]
-
 use bt_hci::controller::ExternalController;
 use embassy_net::{DhcpConfig, Runner, Stack, StackResources};
 use esp_hal::Async;
